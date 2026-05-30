@@ -1,0 +1,7 @@
+kb-whisper-transcribe wraps and/or downloads third-party software and models:
+
+- whisper.cpp: MIT License, https://github.com/ggml-org/whisper.cpp
+- KB-Whisper model: KBLab, https://huggingface.co/KBLab/kb-whisper-large
+- FFmpeg binary via ffmpeg-static: see https://ffmpeg.org/legal.html and the ffmpeg-static package notices.
+
+Users are responsible for ensuring their use of downloaded models and binaries complies with applicable licenses.

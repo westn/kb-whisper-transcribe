@@ -1,0 +1,32 @@
+{
+  "name": "kb-whisper-transcribe",
+  "version": "0.1.0",
+  "description": "Zero-setup Swedish transcription CLI using KB-Whisper and whisper.cpp",
+  "type": "module",
+  "bin": { "kb-whisper-transcribe": "./dist/cli.js" },
+  "files": ["dist", "README.md", "LICENSE", "NOTICE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "env-paths": "^3.0.0",
+    "ffmpeg-static": "^5.2.0",
+    "tar": "^7.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/node": "^22.15.29",
+    "eslint": "^9.28.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.0",
+    "vitest": "^3.1.4"
+  }
+}

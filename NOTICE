@@ -1,7 +1,9 @@
-kb-whisper-transcribe wraps and/or downloads third-party software and models:
+kb-whisper-transcribe is an independent project and is not affiliated with or endorsed by KBLab or the National Library of Sweden.
 
+It wraps and/or downloads third-party software and models:
+
+- KB-Whisper model: Apache-2.0 according to https://huggingface.co/KBLab/kb-whisper-large
 - whisper.cpp: MIT License, https://github.com/ggml-org/whisper.cpp
-- KB-Whisper model: KBLab, https://huggingface.co/KBLab/kb-whisper-large
-- FFmpeg binary via ffmpeg-static: see https://ffmpeg.org/legal.html and the ffmpeg-static package notices.
+- FFmpeg binary via ffmpeg-static: ffmpeg-static is GPL-3.0-or-later; FFmpeg binary licensing depends on build configuration. See https://ffmpeg.org/legal.html and ffmpeg-static package notices.
 
-Users are responsible for ensuring their use of downloaded models and binaries complies with applicable licenses.
+Users are responsible for ensuring their use of downloaded models and binaries complies with applicable licenses. The KB-Whisper name is used descriptively to identify the upstream model; no trademark rights or endorsement are implied.

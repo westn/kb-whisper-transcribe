@@ -1,0 +1,103 @@
+name: Build whisper.cpp runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      runtime_version:
+        description: "Runtime release tag, e.g. whispercpp-runtime-v0.1.0"
+        required: true
+        default: "whispercpp-runtime-v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            os: macos-14
+          - platform: darwin-x64
+            os: macos-13
+          - platform: linux-x64
+            os: ubuntu-22.04
+          - platform: linux-arm64
+            os: ubuntu-24.04-arm
+          - platform: win32-x64
+            os: windows-2022
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          path: whisper.cpp
+      - name: Configure
+        shell: bash
+        run: cmake -S whisper.cpp -B whisper.cpp/build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        shell: bash
+        run: cmake --build whisper.cpp/build --config Release --target whisper-cli --parallel
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp whisper.cpp/build/bin/Release/whisper-cli.exe package/whisper-cli.exe
+          else
+            cp whisper.cpp/build/bin/whisper-cli package/whisper-cli
+            chmod +x package/whisper-cli
+          fi
+          tar -czf whisper-cli-${{ matrix.platform }}.tar.gz -C package .
+          shasum -a 256 whisper-cli-${{ matrix.platform }}.tar.gz > whisper-cli-${{ matrix.platform }}.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.platform }}
+          path: |
+            whisper-cli-${{ matrix.platform }}.tar.gz
+            whisper-cli-${{ matrix.platform }}.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ inputs.runtime_version }}'
+          repo='${{ github.repository }}'
+          node <<'NODE'
+          const fs = require('fs');
+          const tag = process.env.TAG;
+          const repo = process.env.REPO;
+          const platforms = ['darwin-arm64','darwin-x64','linux-x64','linux-arm64','win32-x64'];
+          const assets = {};
+          for (const platform of platforms) {
+            const archive = `whisper-cli-${platform}.tar.gz`;
+            const shaLine = fs.readFileSync(`artifacts/${archive}.sha256`, 'utf8').trim();
+            assets[platform] = {
+              url: `https://github.com/${repo}/releases/download/${tag}/${archive}`,
+              sha256: shaLine.split(/\s+/)[0],
+              binary: platform.startsWith('win32') ? 'whisper-cli.exe' : 'whisper-cli'
+            };
+          }
+          fs.writeFileSync('runtime-manifest.json', JSON.stringify({ version: tag, assets }, null, 2));
+NODE
+        env:
+          TAG: ${{ inputs.runtime_version }}
+          REPO: ${{ github.repository }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.runtime_version }}
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+            runtime-manifest.json

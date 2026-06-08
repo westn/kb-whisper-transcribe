@@ -24,15 +24,23 @@ export async function ensureModel(options: { model: string; cacheDir?: string; v
     let lastError: unknown;
     for (let attempt = 1; attempt <= MODEL_DOWNLOAD_ATTEMPTS; attempt += 1) {
       if (options.verbose) console.error(`Downloading model ${options.model} (attempt ${attempt}/${MODEL_DOWNLOAD_ATTEMPTS}; this can take a while)...`);
-      await fs.rm(tmpPath, { force: true });
       try {
-        await downloadFile({ url: model.url, outputPath: tmpPath, maxBytes: 10 * 1024 * 1024 * 1024, allowPrivateIp: false });
+        await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+        await downloadFile({
+          url: model.url,
+          outputPath: tmpPath,
+          maxBytes: 10 * 1024 * 1024 * 1024,
+          allowPrivateIp: false,
+          resumable: true,
+          verbose: options.verbose,
+        });
         await verifyModelFile(tmpPath, model.sha256, model.sizeBytes);
         await fs.rename(tmpPath, modelPath);
         return modelPath;
       } catch (error) {
         lastError = error;
         await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+        if (isVerificationError(error)) await fs.rm(`${tmpPath}.download`, { force: true }).catch(() => undefined);
         if (attempt < MODEL_DOWNLOAD_ATTEMPTS) await sleep(1000 * attempt);
       }
     }
@@ -61,6 +69,11 @@ async function verifyModelFile(file: string, expectedSha256: string, expectedSiz
   }
   const actual = await sha256File(file);
   if (actual !== expectedSha256) throw new UserFacingError(`Checksum mismatch for ${file}. Expected ${expectedSha256}, got ${actual}. The corrupt file was removed; retrying will download a fresh copy.`);
+}
+
+function isVerificationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Checksum mismatch") || message.includes("Model download is incomplete");
 }
 
 function toModelDownloadError(modelPath: string, error: unknown): UserFacingError {

@@ -90,7 +90,7 @@ jobs:
             };
           }
           fs.writeFileSync('runtime-manifest.json', JSON.stringify({ version: tag, assets }, null, 2));
-NODE
+          NODE
         env:
           TAG: ${{ inputs.runtime_version }}
           REPO: ${{ github.repository }}

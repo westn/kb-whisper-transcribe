@@ -24,7 +24,9 @@ export async function downloadFile(options: { url: string; outputPath: string; m
   const response = await fetchWithValidatedRedirects(options.url, Boolean(options.allowPrivateIp));
   if (!response.ok || !response.body) throw new UserFacingError(`Failed to download ${options.url}: HTTP ${response.status}`);
   const contentLength = response.headers.get("content-length");
-  if (contentLength && Number(contentLength) > options.maxBytes) throw new UserFacingError(`Download too large: ${contentLength} bytes (limit ${options.maxBytes})`);
+  const parsedContentLength = contentLength ? Number(contentLength) : null;
+  const expectedBytes = Number.isFinite(parsedContentLength) ? parsedContentLength : null;
+  if (expectedBytes && expectedBytes > options.maxBytes) throw new UserFacingError(`Download too large: ${contentLength} bytes (limit ${options.maxBytes})`);
   let downloaded = 0;
   const limitStream = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -37,6 +39,9 @@ export async function downloadFile(options: { url: string; outputPath: string; m
   const tmp = `${options.outputPath}.download`;
   try {
     await pipeline(Readable.fromWeb(response.body.pipeThrough(limitStream) as any), fs.createWriteStream(tmp));
+    if (expectedBytes !== null && downloaded !== expectedBytes) {
+      throw new UserFacingError(`Download incomplete for ${options.url}: expected ${expectedBytes} bytes, got ${downloaded}`);
+    }
     await fsp.rename(tmp, options.outputPath);
   } catch (error) {
     await fsp.rm(tmp, { force: true }).catch(() => undefined);

@@ -14,9 +14,10 @@ const MODEL_DOWNLOAD_ATTEMPTS = 3;
 export async function ensureModel(options: { model: string; cacheDir?: string; verbose?: boolean }): Promise<string> {
   const model = MODELS[options.model as keyof typeof MODELS];
   if (!model) throw new UserFacingError(`Unknown model: ${options.model}. Available: ${Object.keys(MODELS).join(", ")}`);
-  const modelDir = path.join(options.cacheDir ?? DEFAULT_CACHE, "models", options.model);
+  const cacheRoot = options.cacheDir ?? DEFAULT_CACHE;
+  const modelDir = path.join(cacheRoot, "models", options.model);
   const modelPath = path.join(modelDir, model.fileName);
-  await fs.mkdir(modelDir, { recursive: true });
+  await ensureWritableDirectory(modelDir);
   if (await validExisting(modelPath, model.sha256, model.sizeBytes, options.verbose)) return modelPath;
   return withFileLock(path.join(modelDir, ".lock"), async () => {
     if (await validExisting(modelPath, model.sha256, model.sizeBytes, options.verbose)) return modelPath;
@@ -69,6 +70,19 @@ async function verifyModelFile(file: string, expectedSha256: string, expectedSiz
   }
   const actual = await sha256File(file);
   if (actual !== expectedSha256) throw new UserFacingError(`Checksum mismatch for ${file}. Expected ${expectedSha256}, got ${actual}. The corrupt file was removed; retrying will download a fresh copy.`);
+}
+
+async function ensureWritableDirectory(dir: string): Promise<void> {
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.access(dir, fs.constants.R_OK | fs.constants.W_OK);
+    const probe = path.join(dir, `.write-test-${process.pid}-${Date.now()}`);
+    await fs.writeFile(probe, "");
+    await fs.rm(probe, { force: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new UserFacingError(`Model cache directory is not writable: ${dir}. Set --cache-dir to a writable directory or fix filesystem permissions for the runtime user. Original error: ${message}`);
+  }
 }
 
 function isVerificationError(error: unknown): boolean {

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { UserFacingError } from "../errors.js";
+import { downloadFileWithCurl, hasCurl } from "../io/curlDownload.js";
 import { downloadFile } from "../io/download.js";
 import { sha256File } from "./checksums.js";
 import { withFileLock } from "./lock.js";
@@ -27,14 +28,22 @@ export async function ensureModel(options: { model: string; cacheDir?: string; v
       if (options.verbose) console.error(`Downloading model ${options.model} (attempt ${attempt}/${MODEL_DOWNLOAD_ATTEMPTS}; this can take a while)...`);
       try {
         await fs.rm(tmpPath, { force: true }).catch(() => undefined);
-        await downloadFile({
-          url: model.url,
-          outputPath: tmpPath,
-          maxBytes: 10 * 1024 * 1024 * 1024,
-          allowPrivateIp: false,
-          resumable: true,
-          verbose: options.verbose,
-        });
+        if (await hasCurl()) {
+          await downloadFileWithCurl({
+            url: model.url,
+            outputPath: tmpPath,
+            verbose: options.verbose,
+          });
+        } else {
+          await downloadFile({
+            url: model.url,
+            outputPath: tmpPath,
+            maxBytes: 10 * 1024 * 1024 * 1024,
+            allowPrivateIp: false,
+            resumable: true,
+            verbose: options.verbose,
+          });
+        }
         await verifyModelFile(tmpPath, model.sha256, model.sizeBytes);
         await fs.rename(tmpPath, modelPath);
         return modelPath;

@@ -1,4 +1,5 @@
 import envPaths from "env-paths";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import * as tar from "tar";
@@ -20,11 +21,13 @@ export async function ensureWhisper(options: { cacheDir?: string; verbose?: bool
   const runtimeDir = path.join(root, "runtimes", "whisper.cpp", RUNTIME_VERSION, platform);
   const binaryName = platform.startsWith("win32") ? "whisper-cli.exe" : "whisper-cli";
   const binaryPath = path.join(runtimeDir, binaryName);
-  if (await fileExists(binaryPath)) return binaryPath;
+  if (await usableWhisperBinary(binaryPath)) return binaryPath;
+  await fs.rm(runtimeDir, { recursive: true, force: true }).catch(() => undefined);
   await fs.mkdir(runtimeDir, { recursive: true });
 
   return withFileLock(path.join(runtimeDir, ".lock"), async () => {
-    if (await fileExists(binaryPath)) return binaryPath;
+    if (await usableWhisperBinary(binaryPath)) return binaryPath;
+    await cleanRuntimeDirPreservingLock(runtimeDir);
     if (options.verbose) console.error(`Downloading whisper.cpp runtime for ${platform}...`);
     const manifestPath = path.join(runtimeDir, "runtime-manifest.json");
     await downloadFile({ url: DEFAULT_RUNTIME_MANIFEST_URL, outputPath: manifestPath, maxBytes: 5 * 1024 * 1024, allowPrivateIp: false });
@@ -38,6 +41,7 @@ export async function ensureWhisper(options: { cacheDir?: string; verbose?: bool
     await tar.x({ file: archivePath, cwd: runtimeDir });
     if (!platform.startsWith("win32")) await fs.chmod(binaryPath, 0o755).catch(() => undefined);
     if (!(await fileExists(binaryPath))) throw new UserFacingError(`Runtime archive did not contain expected binary: ${binaryName}`);
+    if (!(await usableWhisperBinary(binaryPath))) throw new UserFacingError(`Downloaded whisper.cpp runtime is not executable on this system: ${binaryPath}`);
     return binaryPath;
   });
 }
@@ -46,3 +50,28 @@ async function assertExecutable(file: string): Promise<string> {
   try { await fs.access(file); return file; } catch { throw new UserFacingError(`whisper.cpp binary not found: ${file}`); }
 }
 async function fileExists(file: string): Promise<boolean> { try { await fs.access(file); return true; } catch { return false; } }
+
+async function cleanRuntimeDirPreservingLock(runtimeDir: string): Promise<void> {
+  await fs.mkdir(runtimeDir, { recursive: true });
+  const entries = await fs.readdir(runtimeDir, { withFileTypes: true }).catch(() => []);
+  await Promise.all(entries.filter(entry => entry.name !== ".lock").map(entry => fs.rm(path.join(runtimeDir, entry.name), { recursive: true, force: true })));
+}
+
+async function usableWhisperBinary(file: string): Promise<boolean> {
+  if (!(await fileExists(file))) return false;
+  return new Promise(resolve => {
+    const child = spawn(file, ["--help"], { stdio: "ignore" });
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      resolve(false);
+    }, 5000);
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    child.on("close", code => {
+      clearTimeout(timer);
+      resolve(code === 0);
+    });
+  });
+}
